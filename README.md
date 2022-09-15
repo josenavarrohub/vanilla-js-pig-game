@@ -1,4 +1,4 @@
-# A dice game in Vanilla JavaScript
+# Pig, a dice game in Vanilla JavaScript
 
 ## Author
 
