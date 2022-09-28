@@ -1,4 +1,6 @@
-# Pig, a dice game in Vanilla JavaScript
+# 🐷 Pig, a dice game in Vanilla JavaScript
+
+[![Pig, a dice game in Vanilla JavaScript](https://github.com/josenavarrohub/vanilla-js-pig-game/blob/main/demo.png?raw=true)](https://josenavarrohub.github.io/vanilla-js-pig-game/)
 
 ## Gameplay
 Each turn, a player repeatedly rolls a die until either a 1 is rolled or the player decides to "hold":
