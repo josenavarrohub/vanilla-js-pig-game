@@ -1,148 +1,269 @@
 'use strict';
 
-// State
-const state = {
-    activePlayer: undefined,
-    score: Array(2),
-    turnTotal: Array(2),
+/* ================== Debugging ================== */
+const debugApp = () => {
+  console.clear();
+  console.log('*******************');
+  console.log(`👤 ${accounts.length} accounts 👤`);
+  console.log('*******************');
+  accounts.forEach(e => console.log(e));
 };
 
-// Elements
+/* ================== App Settings ================== */
+const debugAppEnabled = true;
+const autoLogout = 120 // Seconds
+
+/* ================== Elements ================== */
 const element = {
-    score: [
-        document.querySelector('#score0'),
-        document.querySelector('#score1'),
-    ],
-    turnTotal: [
-        document.querySelector('#turnTotal0'),
-        document.querySelector('#turnTotal1'),
-    ],
-    dice: document.querySelector('.dice'),
-    btnNew: document.querySelector('.btn--new'),
-    btnRoll: document.querySelector('.btn--roll'),
-    btnHold: document.querySelector('.btn--hold'),
-    player: [
-        document.querySelector('.player--0'),
-        document.querySelector('.player--1'),
-    ],
+  module: {
+    login: document.querySelector('.m-login'),
+    dashboard: document.querySelector('.m-dashboard'),
+  },
+  login: {
+    msg: document.querySelector('.m-login__msg'),
+    username: document.querySelector('.m-login__username'),
+    password: document.querySelector('.m-login__password'),
+    send: document.querySelector('.m-login__send'),
+  },
+  welcome: document.querySelector('.c-navbar__welcome'),
+  logout: document.querySelector('.c-navbar__logout'),
+  movements: {
+    timeout: document.querySelector('.c-movements__timeout'), 
+    body: document.querySelector('.c-movements__body'),
+  },
+  summary: {
+    balance: document.querySelector('.c-summary__balance'),
+    deposits: document.querySelector('.c-summary__deposits'),
+    withdrawals: document.querySelector('.c-summary__withdrawals'),
+    interests: document.querySelector('.c-summary__interests'),
+    interestRate: document.querySelector('.c-summary__interest-rate'),
+  },
+  transfers: {
+    username: document.querySelector('.c-transfers__username'),
+    amount: document.querySelector('.c-transfers__amount'),
+    send: document.querySelector('.c-transfers__send'),
+  },
+  loan: {
+    amount: document.querySelector('.c-loan__amount'),
+    send: document.querySelector('.c-loan__send'),
+  },
+  delete: {
+    username: document.querySelector('.c-delete__username'),
+    password: document.querySelector('.c-delete__password'),
+    send: document.querySelector('.c-delete__send'),
+  },
+};
+
+/* ================== App logic ================== */
+
+// Global variables
+let account;
+let timerInterval;
+
+// Get and set data
+const getAccount = (username, password) => accounts.find(e => e.username === username && e.password === +password);
+const getDeposits = movements => movements.filter(e => e > 0).reduce((accu, e) => accu + e);
+const getWithdrawals = movements => movements.filter(e => e < 0).reduce((accu, e) => accu + e);
+const getInterests = account => getDeposits(account.movements) * account.interestRate;
+const setBalance = account => account.balance = getDeposits(account.movements) + getWithdrawals(account.movements) - getInterests(account);
+
+// Log in
+const login = (username, password) => {
+  account = getAccount(username, password);
+  if (account) {
+    element.login.msg.textContent = 'Please enter your credentials';
+    element.login.username.value = element.login.password.value = '';
+    element.login.password.blur();
+    element.login.send.blur();
+    element.module.login.classList.add('d-none');
+    element.module.dashboard.classList.remove('d-none');
+    displayWelcome(account);
+    initAutoLogout();
+    refreshDashboard(account)
+  } else {
+    element.login.msg.textContent = '🤚 Username or password incorrect!';
+  }
+};
+
+// Log out
+const logout = () => {
+  account = null;
+  clearInterval(timerInterval);
+  element.module.login.classList.remove('d-none');
+  element.module.dashboard.classList.add('d-none');
+};
+
+// Initiate automatic log out
+const initAutoLogout = () => {
+  let seconds = autoLogout;
+  const updateTimer = () => {
+    const ii = String(Math.trunc(seconds / 60)).padStart(2, '0');
+    const ss = String(seconds % 60).padStart(2, '0');
+    element.movements.timeout.textContent = `${ii}:${ss}`;
+    if (seconds === 0) {
+      clearInterval(timerInterval);
+      logout();
+    }
+    seconds--;
+  };
+  updateTimer();
+  timerInterval = setInterval(updateTimer, 1000);
+};
+
+// Display the welcome message
+const displayWelcome = ({ fullName }) => element.welcome.textContent = fullName;
+
+// Format amount
+const formatAmount = (amount, locale, currency) => new Intl.NumberFormat(locale, {
+  style: 'currency',
+  currency: currency,
+}).format(amount);
+
+// Format percentage
+const formatPercentage = (value, locale) => new Intl.NumberFormat(locale, {
+  style: 'percent'
+}).format(value);
+
+// Format date and time
+const formatDate = (ISO8601, locale) => {
+  const date = new Date(ISO8601);
+  return new Intl.DateTimeFormat(locale).format(date);
+};
+
+// Display movements
+const displayMovements = ({ movements, movementsDates, locale, currency }) => {
+  element.movements.body.innerHTML = '';
+  movements.forEach((movement, i) => {
+    const type = movement > 0 ? 'deposit' : 'withdrawal';
+    const badge = movement > 0 ? 'success' : 'danger';
+    const tableRow = `
+      <tr>
+        <td><span class="badge bg-${badge}">${type}</span></td>
+        <td class="movement">${formatAmount(movement, locale, currency)}</td>
+        <td class="movement">${formatDate(movementsDates.at(i), locale)}</td>
+      </tr>
+    `;
+    element.movements.body.insertAdjacentHTML('afterbegin', tableRow);
+  });
+  debugAppEnabled && debugApp();
+};
+
+// Display summary
+const displaySummary = account => {
+  element.summary.balance.classList.add(account.balance >= 0 ? 'bg-success' : 'bg-danger');
+  element.summary.balance.textContent = formatAmount(account.balance, account.locale, account.currency);
+  element.summary.deposits.textContent = formatAmount(getDeposits(account.movements), account.locale, account.currency);
+  element.summary.withdrawals.textContent = formatAmount(getWithdrawals(account.movements), account.locale, account.currency);
+  element.summary.interests.textContent = formatAmount(getInterests(account), account.locale, account.currency);
+  element.summary.interestRate.textContent = formatPercentage(account.interestRate, account.locale);  
 }
 
-// Function: Initialization
-const init = () => {
-    // State
-    state.activePlayer = 0;
-    state.score[0] = 0;
-    state.score[1] = 0;
-    state.turnTotal[0] = 0;
-    state.turnTotal[1] = 0;
-
-    // Elements
-    element.score[0].textContent = state.score[0];
-    element.score[1].textContent = state.score[1];
-    element.turnTotal[0].textContent = state.turnTotal[0];
-    element.turnTotal[1].textContent = state.turnTotal[1];
-    element.dice.classList.add('hidden');
-};
-init();
-
-// Function: Reset turn total
-const resetTurnTotal = () => {
-    state.turnTotal[state.activePlayer] = 0;
-    element.turnTotal[state.activePlayer].textContent = 0;
+// Refresh dashboard
+const refreshDashboard = account => {
+  setBalance(account);
+  displayMovements(account);
+  displaySummary(account);
 };
 
-// Function: Switch player
-const switchPlayer = () => {
-    state.activePlayer = state.activePlayer === 0 ? 1 : 0;
-    element.player[0].classList.toggle('player--active');
-    element.player[1].classList.toggle('player--active');
+// Transfer money
+const transferMoney = (account, recipient, amount) => {
+  if (
+    account.username !== recipient?.username &&
+    recipient?.username &&
+    account.balance >= amount &&
+    amount > 0
+  ) {
+    new Audio('mp3/action.mp3').play();
+    account.movements.push(-amount);
+    recipient.movements.push(amount);
+    const date = new Date().toISOString();
+    account.movementsDates.push(date);
+    recipient.movementsDates.push(date);
+    refreshDashboard(account);
+    element.transfers.username.value = element.transfers.amount.value = '';
+    element.transfers.send.blur();
+    debugAppEnabled && debugApp();
+  }
 };
 
-// Function: Debug state
-const debugState = () => {
-    console.clear();
-    console.log("=========================");
-    console.log('   📢Current state 📢   ');
-    console.log("=========================");
-    console.table(state);
+// Request loan
+const requestLoan = (account, amount) => {
+  if (
+    account.movements.some(e => e >= amount * 0.1) &&
+    amount > 0
+  ) {
+    new Audio('mp3/action.mp3').play();
+    account.movements.push(amount);
+    account.movementsDates.push(new Date().toISOString());
+    refreshDashboard(account);
+    element.loan.amount.value = '';
+    element.loan.amount.blur();
+    element.loan.send.blur();
+    debugAppEnabled && debugApp();
+  }
 };
 
-// Event listener: User rolls dice
-element.btnRoll.addEventListener('click', () => {
-    // Play sound
-    const audio = new Audio('mp3/roll-dice.mp3');
-    audio.play();
+// Delete account
+const deleteAccount = (account, username, password) => {
+  if (
+    account.username === username &&
+    account.password === +password
+  ) {
+    accounts.splice(
+      accounts.findIndex(e => e.username === username),
+      1,
+    );
+    element.delete.username.value = element.delete.password.value = '';
+    element.delete.password.blur();
+    element.delete.send.blur();
+    logout();
+  }
+  debugAppEnabled && debugApp();
+}
 
-    // Generate random dice roll
-    const dice = Math.floor(Math.random() * 6) + 1;
-    
-    // Display dice roll
-    element.dice.src = `img/dice/${dice}.svg`;
-    element.dice.classList.remove('hidden');
+/* ================== Event listeners ================== */
 
-    // If dice is different than 1
-    if (dice !== 1) {
-        // Add dice roll to turn total
-        state.turnTotal[state.activePlayer] += dice;
-
-        // Display new turn total
-        element.turnTotal[state.activePlayer].textContent = state.turnTotal[state.activePlayer];
-    } else {
-        // Reset turn total
-        resetTurnTotal();
-
-        // Switch player
-        switchPlayer();
-    }
-
-    // Debug
-    debugState();
+// Log in
+element.login.send.addEventListener('click', e => {
+  e.preventDefault();
+  login(
+    element.login.username.value,
+    element.login.password.value
+  );
 });
 
-// Event listener: User holds score
-element.btnHold.addEventListener('click', () => {
-    // Add turn total to score
-    state.score[state.activePlayer] += state.turnTotal[state.activePlayer];
-    element.score[state.activePlayer].textContent = state.score[state.activePlayer];
+// Log out
+element.logout.addEventListener('click', logout);
 
-    // Reset turn total
-    resetTurnTotal();
-
-    // If score >= 100
-    if (state.score[state.activePlayer] >= 100) {
-        // Play sound
-        const audio = new Audio('mp3/winner.mp3');
-        audio.play();
-
-        // Player wins
-        element.player[state.activePlayer].classList.add('player--winner');
-
-        // Disable buttons
-        element.btnRoll.disabled = true;
-        element.btnHold.disabled = true;
-
-        // Hide dice
-        element.dice.classList.add('hidden');
-    } else {
-        // Switch player
-        switchPlayer();
-    }    
-
-    // Debug
-    debugState();
+// User transfers money
+element.transfers.send.addEventListener('click', e => {
+  e.preventDefault();
+  transferMoney(
+    account,
+    accounts.find(e => e.username === element.transfers.username.value),
+    +element.transfers.amount.value
+  );
 });
 
-// Event: User starts a new game
-element.btnNew.addEventListener('click', () => {
-    // Clean player
-    element.player[state.activePlayer].classList.remove('player--active');
-    element.player[state.activePlayer].classList.remove('player--winner');
-    element.player[0].classList.add('player--active');
-
-    // Disable buttons
-    element.btnRoll.disabled = false;
-    element.btnHold.disabled = false;
-
-    // Initialization
-    init();
+// User requests a loan
+element.loan.send.addEventListener('click', e => {
+  e.preventDefault();
+  requestLoan(
+    account,
+    +Math.floor(element.loan.amount.value)
+  );
 });
+
+// User deletes account
+element.delete.send.addEventListener('click', e => {
+  e.preventDefault();
+  deleteAccount(
+    account,
+    element.delete.username.value,
+    element.delete.password.value,
+  );
+});
+
+/* ================== UI tools ================== */
+const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
